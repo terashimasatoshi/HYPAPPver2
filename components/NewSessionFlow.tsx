@@ -116,7 +116,11 @@ export function NewSessionFlow() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState<NewSessionFormState | null>(null);
+
+  // ❗ 最初から「空のフォーム状態」を持つ（nullを使わない）
+  const [form, setForm] = useState<NewSessionFormState>(() =>
+    createInitialForm(undefined),
+  );
 
   // 初回ロード時に顧客とセッションを取得
   useEffect(() => {
@@ -129,24 +133,26 @@ export function NewSessionFlow() {
       const sData = (await sRes.json()) as Session[];
       setClients(cData);
       setSessions(sData);
-      setForm((prev) => prev ?? createInitialForm(cData[0]?.id));
+
+      // まだ顧客が入っていなければ、先頭顧客で初期化
+      if (!form.clientId && cData[0]?.id) {
+        setForm((prev) => createInitialForm(cData[0].id));
+      }
     }
     void load();
+    // form は依存に入れない（初期化だけを想定）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!form) {
-    return (
-      <div className="card p-8 text-sm text-gray-500">
-        顧客情報を読み込み中です…
-      </div>
-    );
-  }
-
-  const handleChange = (
-    field: keyof NewSessionFormState,
-    value: string,
+  // 型安全な汎用フィールド変更ハンドラ
+  const handleChange = <K extends keyof NewSessionFormState>(
+    field: K,
+    value: NewSessionFormState[K],
   ) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
+    setForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
   };
 
   const toggleLifestyleTag = (tag: LifestyleTag) => {
@@ -194,8 +200,7 @@ export function NewSessionFlow() {
 
     try {
       const visitNumber =
-        sessions.filter((s) => s.clientId === form.clientId).length +
-        1;
+        sessions.filter((s) => s.clientId === form.clientId).length + 1;
 
       const newSession: Session = {
         id: `s-${Date.now()}`,
@@ -203,12 +208,8 @@ export function NewSessionFlow() {
         date: form.date || new Date().toISOString().slice(0, 10),
         menu: form.menu,
         visitNumber,
-        hrvBefore: form.hrvBefore
-          ? toNumber(form.hrvBefore)
-          : undefined,
-        hrvAfter: form.hrvAfter
-          ? toNumber(form.hrvAfter)
-          : undefined,
+        hrvBefore: form.hrvBefore ? toNumber(form.hrvBefore) : undefined,
+        hrvAfter: form.hrvAfter ? toNumber(form.hrvAfter) : undefined,
         pre: {
           fatigue: toNumber(form.preFatigue),
           stiffness: toNumber(form.preStiffness),
@@ -278,11 +279,7 @@ export function NewSessionFlow() {
           </p>
         </div>
         <div className="w-40">
-          <ProgressBar
-            label={`ステップ ${step} / 3`}
-            value={step}
-            max={3}
-          />
+          <ProgressBar label={`ステップ ${step} / 3`} value={step} max={3} />
         </div>
       </div>
 
@@ -358,9 +355,7 @@ export function NewSessionFlow() {
                   label="頭の重さ・ボーッと感"
                   type="number"
                   value={form.preHeadHeaviness}
-                  onChange={(v) =>
-                    handleChange('preHeadHeaviness', v)
-                  }
+                  onChange={(v) => handleChange('preHeadHeaviness', v)}
                   min={0}
                   max={10}
                   helperText="0 = とても軽い / 10 = とても重い"
@@ -381,17 +376,13 @@ export function NewSessionFlow() {
                   label="ここ1週間の睡眠の調子"
                   options={sleepQualityOptions}
                   value={form.preSleepQualityWeek}
-                  onChange={(v) =>
-                    handleChange('preSleepQualityWeek', v)
-                  }
+                  onChange={(v) => handleChange('preSleepQualityWeek', v)}
                 />
                 <Select
                   label="昨晩の睡眠時間"
                   options={sleepHoursOptions}
                   value={form.preSleepHoursLastNight}
-                  onChange={(v) =>
-                    handleChange('preSleepHoursLastNight', v)
-                  }
+                  onChange={(v) => handleChange('preSleepHoursLastNight', v)}
                   placeholder="選択してください"
                 />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -423,9 +414,7 @@ export function NewSessionFlow() {
                   >
                     <input
                       type="checkbox"
-                      checked={form.preLifestyleTags.includes(
-                        item.tag,
-                      )}
+                      checked={form.preLifestyleTags.includes(item.tag)}
                       onChange={() => toggleLifestyleTag(item.tag)}
                       className="w-4 h-4 text-emerald-600 focus:ring-emerald-500 focus:ring-2 focus:ring-offset-0 border-gray-300 rounded"
                     />
@@ -474,9 +463,7 @@ export function NewSessionFlow() {
                   label="頭の軽さ・スッキリ感（0〜10）"
                   type="number"
                   value={form.postHeadLightness}
-                  onChange={(v) =>
-                    handleChange('postHeadLightness', v)
-                  }
+                  onChange={(v) => handleChange('postHeadLightness', v)}
                   min={0}
                   max={10}
                 />
@@ -506,9 +493,7 @@ export function NewSessionFlow() {
                     { value: '5', label: '5: とても満足している' },
                   ]}
                   value={form.postSatisfaction}
-                  onChange={(v) =>
-                    handleChange('postSatisfaction', v)
-                  }
+                  onChange={(v) => handleChange('postSatisfaction', v)}
                 />
               </div>
             </div>
@@ -543,11 +528,7 @@ export function NewSessionFlow() {
               破棄して一覧に戻る
             </Button>
             {step < 3 ? (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleNext}
-              >
+              <Button variant="primary" size="sm" onClick={handleNext}>
                 次へ
               </Button>
             ) : (
