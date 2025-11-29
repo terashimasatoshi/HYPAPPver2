@@ -11,11 +11,21 @@ import { ProgressBar } from './ProgressBar';
 import { Button } from './Button';
 
 interface NewSessionFormState {
-  clientId: string;
+  // 顧客まわり
+  clientId: string;            // 既存顧客ID or "__new__"
+  newClientName: string;       // 新規顧客のお名前
+  newClientAgeLabel: string;   // 「40代・女性」など表示用（任意）
+  staffName: string;           // 担当者名
+
+  // 基本情報
   date: string;
   menu: string;
+
+  // HRV
   hrvBefore: string;
   hrvAfter: string;
+
+  // 施術前の状態
   preFatigue: string;
   preStiffness: string;
   preHeadHeaviness: string;
@@ -27,6 +37,8 @@ interface NewSessionFormState {
   preLifestyleTags: LifestyleTag[];
   preLifestyleMemo: string;
   mainConcern: string;
+
+  // 施術後の体感
   postHeadLightness: string;
   postBodyRelax: string;
   postMentalRelax: string;
@@ -79,11 +91,17 @@ const lifestyleItems: { tag: LifestyleTag; label: string }[] = [
 function createInitialForm(clientId: string | undefined): NewSessionFormState {
   const today = new Date().toISOString().slice(0, 10);
   return {
-    clientId: clientId ?? '',
+    clientId: clientId ?? '',          // 初期は空 → useEffectでセット
+    newClientName: '',
+    newClientAgeLabel: '',
+    staffName: '',
+
     date: today,
     menu: '森の深眠スパ90分',
+
     hrvBefore: '',
     hrvAfter: '',
+
     preFatigue: '7',
     preStiffness: '6',
     preHeadHeaviness: '5',
@@ -95,6 +113,7 @@ function createInitialForm(clientId: string | undefined): NewSessionFormState {
     preLifestyleTags: ['smartphone'],
     preLifestyleMemo: '',
     mainConcern: '',
+
     postHeadLightness: '8',
     postBodyRelax: '8',
     postMentalRelax: '7',
@@ -117,7 +136,6 @@ export function NewSessionFlow() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [loading, setLoading] = useState(false);
 
-  // ❗ 最初から「空のフォーム状態」を持つ（nullを使わない）
   const [form, setForm] = useState<NewSessionFormState>(() =>
     createInitialForm(undefined),
   );
@@ -134,17 +152,20 @@ export function NewSessionFlow() {
       setClients(cData);
       setSessions(sData);
 
-      // まだ顧客が入っていなければ、先頭顧客で初期化
-      if (!form.clientId && cData[0]?.id) {
-        setForm((prev) => createInitialForm(cData[0].id));
+      // 初期状態：顧客がいれば先頭を選択、いなければ「新規顧客」モードにする
+      if (!form.clientId) {
+        setForm((prev) => ({
+          ...prev,
+          clientId: cData[0]?.id ?? '__new__',
+        }));
       }
     }
     void load();
-    // form は依存に入れない（初期化だけを想定）
+    // form を依存に入れると無限ループになるので意図的に空配列
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 型安全な汎用フィールド変更ハンドラ
+  // 汎用変更ハンドラ（型安全）
   const handleChange = <K extends keyof NewSessionFormState>(
     field: K,
     value: NewSessionFormState[K],
@@ -169,17 +190,38 @@ export function NewSessionFlow() {
 
   const handleNext = () => {
     if (step === 1) {
-      if (!form.clientId || !form.menu) {
-        alert('顧客とメニューを入力してください。');
+      const isNewClient = form.clientId === '__new__';
+
+      if (isNewClient) {
+        if (!form.newClientName.trim()) {
+          alert('新規顧客のお名前を入力してください。');
+          return;
+        }
+      } else {
+        if (!form.clientId) {
+          alert('顧客を選択してください。');
+          return;
+        }
+      }
+
+      if (!form.menu) {
+        alert('メニューを選択してください。');
+        return;
+      }
+
+      if (!form.staffName.trim()) {
+        alert('担当者名を入力してください。');
         return;
       }
     }
+
     if (step === 2) {
       if (!form.preSleepQualityWeek) {
         alert('ここ1週間の睡眠の調子を選択してください。');
         return;
       }
     }
+
     setStep((prev) => (prev === 3 ? prev : (prev + 1) as 1 | 2 | 3));
   };
 
@@ -192,22 +234,56 @@ export function NewSessionFlow() {
   };
 
   const handleSubmit = async () => {
-    if (!form.clientId) {
-      alert('顧客が選択されていません。');
-      return;
-    }
+    const isNewClient = form.clientId === '__new__';
+
     setLoading(true);
-
     try {
-      const visitNumber =
-        sessions.filter((s) => s.clientId === form.clientId).length + 1;
+      let clientId = form.clientId;
 
+      // 1. 新規顧客なら /api/clients に保存して ID をもらう
+      if (isNewClient) {
+        if (!form.newClientName.trim()) {
+          alert('新規顧客のお名前を入力してください。');
+          setLoading(false);
+          return;
+        }
+
+        const clientRes = await fetch('/api/clients', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: form.newClientName.trim(),
+            ageLabel: form.newClientAgeLabel || '',
+          }),
+        });
+
+        if (!clientRes.ok) {
+          throw new Error('顧客の保存に失敗しました。');
+        }
+
+        const createdClient = (await clientRes.json()) as Client;
+        clientId = createdClient.id;
+      }
+
+      if (!clientId) {
+        alert('顧客情報の取得に失敗しました。');
+        setLoading(false);
+        return;
+      }
+
+      // 2. 訪問回数を計算
+      const visitNumber =
+        sessions.filter((s) => s.clientId === clientId).length + 1;
+
+      // 3. セッションデータを組み立て
       const newSession: Session = {
         id: `s-${Date.now()}`,
-        clientId: form.clientId,
+        clientId,
         date: form.date || new Date().toISOString().slice(0, 10),
         menu: form.menu,
         visitNumber,
+        // ★ 担当者をセッションに保存
+        staffName: form.staffName || undefined,
         hrvBefore: form.hrvBefore ? toNumber(form.hrvBefore) : undefined,
         hrvAfter: form.hrvAfter ? toNumber(form.hrvAfter) : undefined,
         pre: {
@@ -240,7 +316,7 @@ export function NewSessionFlow() {
       });
 
       if (!res.ok) {
-        throw new Error('保存に失敗しました');
+        throw new Error('セッションの保存に失敗しました。');
       }
 
       router.push('/sessions');
@@ -252,11 +328,14 @@ export function NewSessionFlow() {
     }
   };
 
-  const clientOptions =
-    clients.map((c) => ({
+  // ▼ セレクト用オプション
+  const clientOptions = [
+    { value: '__new__', label: '＋ 新規顧客（名前を入力）' },
+    ...clients.map((c) => ({
       value: c.id,
       label: `${c.name}（${c.ageLabel}）`,
-    })) ?? [];
+    })),
+  ];
 
   const menuOptions = [
     { value: '森の深眠スパ60分', label: '森の深眠スパ60分' },
@@ -266,6 +345,8 @@ export function NewSessionFlow() {
       label: '森の深眠スパ90分＋白髪カラー',
     },
   ];
+
+  const isNewClientSelected = form.clientId === '__new__';
 
   return (
     <div className="space-y-6">
@@ -291,12 +372,25 @@ export function NewSessionFlow() {
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Select
-                label="顧客"
+                label="顧客（既存 or 新規）"
                 options={clientOptions}
                 value={form.clientId}
                 onChange={(v) => handleChange('clientId', v)}
                 placeholder="顧客を選択"
                 required
+              />
+              <TextField
+                label="担当者"
+                value={form.staffName}
+                onChange={(v) => handleChange('staffName', v)}
+                placeholder="例: 寺島 / 佐藤 など"
+              />
+              <TextField
+                label="施術日"
+                type="text"
+                value={form.date}
+                onChange={(v) => handleChange('date', v)}
+                helperText="例: 2025-01-18 （後で日付ピッカーに差し替え予定）"
               />
               <Select
                 label="メニュー"
@@ -306,20 +400,32 @@ export function NewSessionFlow() {
                 placeholder="メニューを選択"
                 required
               />
-              <TextField
-                label="施術日"
-                type="text"
-                value={form.date}
-                onChange={(v) => handleChange('date', v)}
-                helperText="例: 2025-01-18 （後で日付ピッカーに差し替え予定）"
-              />
-              <TextField
-                label="今日一番なんとかしたい睡眠の悩み（任意）"
-                value={form.mainConcern}
-                onChange={(v) => handleChange('mainConcern', v)}
-                placeholder="例: 寝つきが悪い / 夜中に目が覚める など"
-              />
             </div>
+
+            {isNewClientSelected && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <TextField
+                  label="新規顧客のお名前"
+                  value={form.newClientName}
+                  onChange={(v) => handleChange('newClientName', v)}
+                  placeholder="例: 田中さん"
+                  required
+                />
+                <TextField
+                  label="年代・メモ（任意）"
+                  value={form.newClientAgeLabel}
+                  onChange={(v) => handleChange('newClientAgeLabel', v)}
+                  placeholder="例: 40代・女性 / 男性 など"
+                />
+              </div>
+            )}
+
+            <TextField
+              label="今日一番なんとかしたい睡眠の悩み（任意）"
+              value={form.mainConcern}
+              onChange={(v) => handleChange('mainConcern', v)}
+              placeholder="例: 寝つきが悪い / 夜中に目が覚める など"
+            />
           </div>
         )}
 
