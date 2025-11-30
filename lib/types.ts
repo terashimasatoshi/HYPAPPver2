@@ -1,12 +1,18 @@
 export interface Client {
   id: string;
   name: string;
-  /** 例: "40代・女性" */
+  /** 年代 例: "40代" */
   ageLabel: string;
-  /** ISO: 2025-01-18 みたいな形式を想定 */
+  /** 性別 例: "女性" / "男性" / "その他" など */
+  gender?: string;
+  /** 初回来店日 (ISO: 2025-01-18 のような形式) */
+  firstVisitDate?: string;
+  /** ISO: 2025-01-18 みたいな形式を想定（最終来店日） */
   lastVisit: string;
   /** 来店回数 */
   visitCount: number;
+  /** 顧客番号（サロン内で使う管理番号） */
+  customerNumber?: string;
 }
 
 export type LifestyleTag =
@@ -62,10 +68,21 @@ export interface Session {
   menu: string;
   /** 何回目の来店か */
   visitNumber: number;
+
+  /** 担当スタッフ名（任意） */
+  staffName?: string;
+
+  /** 施術前HRV（RMSSD） */
   hrvBefore?: number;
+  /** 施術後HRV（RMSSD） */
   hrvAfter?: number;
+  /** 施術前の平均心拍数（bpm） */
   hrBefore?: number;
+  /** 施術後の平均心拍数（bpm） */
   hrAfter?: number;
+  /** 施術前のHYP測定値（必要な場合のみ） */
+  hypBefore?: number;
+
   pre: PreSessionCheck;
   post: PostSessionFeeling;
 }
