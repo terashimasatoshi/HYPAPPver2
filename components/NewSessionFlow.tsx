@@ -12,7 +12,7 @@ import { Button } from './Button';
 
 interface NewSessionFormState {
   // 顧客関連
-  clientId: string; // 既存顧客のID（新規のときは一旦空でOK）
+  clientId: string; // 既存顧客のID
 
   // 新規顧客登録用
   newClientName: string;
@@ -168,6 +168,9 @@ export function NewSessionFlow() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [loading, setLoading] = useState(false);
   const [clientMode, setClientMode] = useState<ClientMode>('existing');
+
+  // 🔍 顧客検索用
+  const [clientSearch, setClientSearch] = useState<string>('');
 
   const [form, setForm] = useState<NewSessionFormState>(() =>
     createInitialForm(undefined),
@@ -364,10 +367,22 @@ export function NewSessionFlow() {
     }
   };
 
+  // 🔍 顧客検索で絞り込んだ一覧
+  const filteredClients = clients.filter((c) => {
+    const keyword = clientSearch.trim().toLowerCase();
+    if (!keyword) return true;
+
+    const haystack = `${c.name}${c.ageLabel}${c.customerNumber ?? ''}`.toLowerCase();
+    return haystack.includes(keyword);
+  });
+
   const clientOptions =
-    clients.map((c) => ({
+    filteredClients.map((c) => ({
       value: c.id,
-      label: `${c.name}（${c.ageLabel}）`,
+      label:
+        c.customerNumber
+          ? `${c.customerNumber} | ${c.name}（${c.ageLabel}）`
+          : `${c.name}（${c.ageLabel}）`,
     })) ?? [];
 
   const menuOptions = [
@@ -434,6 +449,15 @@ export function NewSessionFlow() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {clientMode === 'existing' && (
+                <TextField
+                  label="顧客検索（名前・年代・顧客番号）"
+                  value={clientSearch}
+                  onChange={(v) => setClientSearch(v)}
+                  placeholder="例: 田中 / 40代 / 0001 など"
+                />
+              )}
+
               {clientMode === 'existing' ? (
                 <Select
                   label="顧客"
