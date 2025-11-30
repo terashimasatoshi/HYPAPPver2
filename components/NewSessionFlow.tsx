@@ -169,7 +169,7 @@ export function NewSessionFlow() {
   const [loading, setLoading] = useState(false);
   const [clientMode, setClientMode] = useState<ClientMode>('existing');
 
-  // 🔍 顧客検索用
+  // 🔍 顧客検索用（フルネームのみ）
   const [clientSearch, setClientSearch] = useState<string>('');
 
   const [form, setForm] = useState<NewSessionFormState>(() =>
@@ -190,7 +190,7 @@ export function NewSessionFlow() {
 
       // 顧客リストがあって、まだclientIdが空なら、先頭顧客をセット
       if (!form.clientId && cData[0]?.id) {
-        setForm((prev) => createInitialForm(cData[0].id));
+        setForm(() => createInitialForm(cData[0].id));
       }
     }
     void load();
@@ -367,22 +367,18 @@ export function NewSessionFlow() {
     }
   };
 
-  // 🔍 顧客検索で絞り込んだ一覧
-  const filteredClients = clients.filter((c) => {
-    const keyword = clientSearch.trim().toLowerCase();
-    if (!keyword) return true;
-
-    const haystack = `${c.name}${c.ageLabel}${c.customerNumber ?? ''}`.toLowerCase();
-    return haystack.includes(keyword);
-  });
+  // 🔍 名前だけでフィルタ
+  const filteredClients =
+    clientSearch.trim() === ''
+      ? clients
+      : clients.filter((c) => c.name.includes(clientSearch.trim()));
 
   const clientOptions =
     filteredClients.map((c) => ({
       value: c.id,
-      label:
-        c.customerNumber
-          ? `${c.customerNumber} | ${c.name}（${c.ageLabel}）`
-          : `${c.name}（${c.ageLabel}）`,
+      label: `${c.name}（${c.ageLabel}${
+        c.gender ? `・${c.gender}` : ''
+      }）`,
     })) ?? [];
 
   const menuOptions = [
@@ -451,10 +447,10 @@ export function NewSessionFlow() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {clientMode === 'existing' && (
                 <TextField
-                  label="顧客検索（名前・年代・顧客番号）"
+                  label="顧客検索（お名前）"
                   value={clientSearch}
                   onChange={(v) => setClientSearch(v)}
-                  placeholder="例: 田中 / 40代 / 0001 など"
+                  placeholder="例: 田中花子 など"
                 />
               )}
 
